@@ -1,0 +1,32 @@
+---
+# Step 1: Create Physical Volumes for each partition
+- name: Create Physical Volumes for each partition
+  command: pvcreate {{ item }}
+  register: pv_create
+  ignore_errors: true
+  loop: "{{ partitions }}"
+  loop_control:
+    label: "{{ item }}"
+
+# Step 2: Extend the Volume Group with the new partitions
+- name: Extend Volume Group with new Physical Volumes
+  shell: vgextend {{ vg_name }} {{ item }}
+  when: vg_name in ansible_lvm.vgs  # Ensure VG exists
+  loop: "{{ partitions }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: Debug set partition type output
+  debug:
+    msg: "{{ansible_lvm.lvs}} --- {{vg_name}}/{{lv_name}}"
+
+# Step 3: Extend the Logical Volume
+- name: Extend Logical Volume
+  shell: lvextend -l +100%FREE /dev/{{ vg_name }}/{{ lv_name }}
+  when: lv_name in ansible_lvm.lvs and ansible_lvm.lvs[lv_name].vg == vg_name  # Ensure LV exists and belongs to VG
+  register: lv_extend
+
+# Step 4: Resize the filesystem on the extended Logical Volume
+- name: Resize the filesystem on the Logical Volume
+  shell: resize2fs /dev/{{ vg_name }}/{{ lv_name }}
+  when: lv_extend is changed  # Only resize if LV was extended

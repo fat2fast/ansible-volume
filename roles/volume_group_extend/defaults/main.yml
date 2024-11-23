@@ -1,0 +1,6 @@
+---
+vg_name: your_vg        # Volume Group name
+lv_name: your_lv        # Logical Volume name
+partitions:
+#  - /dev/sdb1   # Partition to use for LVM
+#  - /dev/sdb1   # Partition to use for LVM

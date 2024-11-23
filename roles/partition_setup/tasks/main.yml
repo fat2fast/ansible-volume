@@ -1,0 +1,89 @@
+---
+- name: Get existing partitions for each device
+  command: lsblk -n -o NAME {{ item.device }}
+  register: device_info
+  loop: "{{ devices }}"
+  loop_control:
+    label: "{{ item.device }}"
+    index_var: "index"  # Define custom index variable
+  changed_when: false  # Ensure that lsblk doesn't mark the task as changed
+
+- name: Ensure device_info results exist for each device
+  fail:
+    msg: "Device info not found for {{ item.device }}"
+  when: device_info.results[index] is undefined or device_info.results[index].stdout == ""
+  loop: "{{ devices }}"
+  loop_control:
+    label: "{{ item.device }}"
+    index_var: "index"  # Use the same custom index variable
+
+# - name: Debug
+#   debug:
+#     msg: "Debug {{ item.partition if item.partition is not none else (device_info.results[index].stdout_lines[0]) }} ----- {{device_info.results[index]}}"
+#   loop: "{{ devices }}"
+#   loop_control:
+#     label: "{{ item.device }}"
+#     index_var: "index"  # Use the same custom index variable
+
+- name: Determine or set partition number for each device
+  set_fact:
+    partition_number: "{{ item.partition if item.partition is not none else (device_info.results[index].stdout_lines[0] | map('regex_search', '^' + (item.device | basename) + '\\d+') | select('!=', None) | map('regex_replace', '^.*?(\\d+)$', '\\1') | map('int') | default([0]) | max + 1) }}"
+  loop: "{{ devices }}"
+  loop_control:
+    label: "{{ item.device }}"
+    index_var: "index"  # Use the custom index variable
+  when: device_info.results[index].stdout_lines is defined
+
+- name: Debug Output Command
+  debug:
+    msg: "\nn\np\n{{ partition_number }}\n\n\nw | fdisk {{ item.device }}"
+  loop: "{{ devices }}"
+  loop_control:
+    label: "{{ item.device }}"
+    index_var: "index"  # Use the same custom index variable
+    
+- name: Create partition if it does not exist
+  shell: |
+    echo -e "\nn\np\n{{ partition_number }}\n\n\nw" | fdisk {{ item.device }}
+  ignore_errors: true
+  register: partition_created
+  loop: "{{ devices }}"
+  loop_control:
+    label: "{{ item.device }}"
+    index_var: "index"
+
+# - name: Debug partition creation output
+#   debug:
+#     var: partition_created
+#   when: partition_created is changed
+
+# Task when partition_number is 1
+- name: Set partition type to LVM (Linux LVM type 8e) when partition_number is 1
+  shell: |
+    echo -e "\nt\n8e\nw" | sudo fdisk {{ item.device }}
+  when:
+    - partition_created is changed
+    - partition_number == "1"
+  loop: "{{ devices }}"
+  register: partition_type_changed
+  loop_control:
+    label: "{{ item.device }}"
+    index_var: "index"
+
+# Task when partition_number is not 1
+- name: Set partition type to LVM (Linux LVM type 8e) when partition_number is not 1
+  shell: |
+    echo -e "\nt\n{{ partition_number }}\n8e\nw" | sudo fdisk {{ item.device }}
+  when:
+    - partition_created is changed
+    - partition_number != "1"
+  loop: "{{ devices }}"
+  register: partition_type_changed
+  loop_control:
+    label: "{{ item.device }}"
+    index_var: "index"
+
+- name: Debug set partition type output
+  debug:
+    var: partition_type_changed
+  when: partition_type_changed is changed

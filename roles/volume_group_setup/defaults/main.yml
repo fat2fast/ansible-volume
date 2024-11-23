@@ -1,0 +1,7 @@
+---
+vg_name: your_vg        # Volume Group name
+lv_name: your_lv        # Logical Volume name
+mount_point: /lv_real_path      # Mount point
+partitions:
+#  - /dev/sdb1   # Partition to use for LVM
+#  - /dev/sda1   # Partition to use for LVM

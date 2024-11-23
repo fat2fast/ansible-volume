@@ -1,0 +1,50 @@
+---
+- name: Create Physical Volumes for each partition
+  command: pvcreate {{ item }}
+  register: pv_create
+  ignore_errors: true
+  loop: "{{ partitions }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: Create Volume Group if it does not exist
+  command: vgcreate {{ vg_name }} {{ partitions | join(' ') }}
+  when: vg_name not in ansible_lvm.vgs   # VG not exists
+  register: vg_create
+
+- name: Create Logical Volume if it does not exist
+  shell: |
+    echo "y" | lvcreate -l 100%FREE -n {{ lv_name }} {{ vg_name }}
+  when: lv_name not in ansible_lvm.lvs or ansible_lvm.lvs[lv_name].vg != vg_name  # Ensure LV and VG not exists
+  register: lv_create
+
+- name: Format Logical Volume as ext4
+  filesystem:
+    fstype: ext4
+    dev: "/dev/{{ vg_name }}/{{ lv_name }}"
+  when: lv_create is changed
+
+- name: Create mount point directory
+  file:
+    path: "{{ mount_point }}"
+    state: directory
+  register: mount_point_create
+  when: lv_create is changed
+
+- name: Mount Logical Volume
+  mount:
+    path: "{{ mount_point }}"
+    src: "/dev/{{ vg_name }}/{{ lv_name }}"
+    fstype: ext4
+    state: mounted
+  register: mount_success
+  when: mount_point_create is changed
+
+- name: Ensure mount is persistent on reboot
+  mount:
+    path: "{{ mount_point }}"
+    src: "/dev/{{ vg_name }}/{{ lv_name }}"
+    fstype: ext4
+    opts: defaults
+    state: present
+  when: mount_success is changed

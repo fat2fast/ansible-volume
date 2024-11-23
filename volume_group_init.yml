@@ -1,0 +1,21 @@
+---
+- name: Setup partition and VG
+  hosts: all
+  become: yes
+  roles:
+    - partition_setup
+    - volume_group_setup
+  vars:
+    # partition_setup vars
+    devices:
+    - device: /dev/sda
+      partition: 1
+    - device: /dev/sdb
+      partition: 1
+    # volume_group_setup vars
+    vg_name: your_vg        # Volume Group name
+    lv_name: your_lv        # Logical Volume name
+    mount_point: /lv_real_path      # Mount point
+    partitions:
+     - /dev/sdb1   # Partition to use for LVM
+     - /dev/sda1   # Partition to use for LVM
